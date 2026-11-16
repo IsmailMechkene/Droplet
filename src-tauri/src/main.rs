@@ -19,6 +19,7 @@ mod scheduler;
 mod settings;
 mod settings_window;
 mod shortcut;
+mod spring;
 mod state;
 mod suggest;
 mod win;
@@ -82,6 +83,7 @@ fn main() {
             commands::notch_menu,
             commands::notch_blur,
             commands::notch_recentre,
+            commands::notch_drag_start,
             commands::open_settings,
             commands::settings_data,
             commands::settings_window,
@@ -99,6 +101,7 @@ fn main() {
             let _ = shortcut::replace(&handle, "", &config.general.shortcut);
             let _ = win::autostart::set(config.general.start_with_windows);
             notch::create(&handle, &config)?;
+            notch::watch::start(&handle);
             scheduler::start(handle);
             Ok(())
         })

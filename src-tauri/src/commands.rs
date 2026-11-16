@@ -98,6 +98,10 @@ pub fn notch_blur(app: AppHandle) {
 /// Moves the notch back to the middle of its edge.
 #[tauri::command]
 pub fn notch_recentre(app: AppHandle, core: State<Arc<Core>>) -> Result<(), String> {
+    if notch::window(&app).is_some() {
+        notch::drag::recentre(&app); // springs there, then saves
+        return Ok(());
+    }
     let old = core.config();
     let mut new = old.clone();
     new.notch.position.set(old.notch.edge, 0.5);
@@ -179,4 +183,10 @@ pub async fn pick_agy_path(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn notch_preview(app: AppHandle) {
     let _ = app.emit_to(notch::LABEL, "notch-command", "kick");
+}
+
+/// The grip was pressed: Rust follows the cursor until the button is released.
+#[tauri::command]
+pub fn notch_drag_start(app: AppHandle) {
+    notch::drag::start(&app);
 }

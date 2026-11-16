@@ -5,7 +5,9 @@
 //! all native window work. The window never takes focus when shown.
 
 pub mod dock;
+pub mod drag;
 pub mod monitors;
+pub mod watch;
 
 use std::sync::Mutex;
 
@@ -117,18 +119,33 @@ fn limits_for(state: &NotchState, shape: &Shape) -> (f64, f64) {
     dock::limits(start, len, shape.min_before * scale, shape.min_after * scale)
 }
 
-/// Moves and sizes the native window for the current state. Never activates it.
-fn apply(window: &WebviewWindow, state: &mut NotchState) {
-    let (Some(shape), Some(hwnd)) = (state.shape, hwnd(window)) else { return };
+/// A native window move decided while holding the state lock, carried out after
+/// releasing it. Window calls are answered by the event-loop thread, which may
+/// itself be waiting for the lock, so they must never run under it.
+pub struct Move {
+    rect: (i32, i32, i32, i32),
+    show: bool,
+}
+
+/// Works out where the window should be for the current state.
+fn plan(state: &mut NotchState) -> Option<Move> {
+    let shape = state.shape?;
     if shape.edge != state.edge {
-        return; // the UI has not laid out for the new edge yet
+        return None; // the UI has not laid out for the new edge yet
     }
-    let (x, y, w, h) = dock::window_rect(state.monitor.work, state.edge, state.point, &shape, state.monitor.scale);
+    let rect = dock::window_rect(state.monitor.work, state.edge, state.point, &shape, state.monitor.scale);
+    let show = !state.shown && !state.suppressed;
+    state.shown |= show;
+    Some(Move { rect, show })
+}
+
+/// Moves and sizes the native window. Never activates it.
+fn perform(window: &WebviewWindow, planned: Option<Move>) {
+    let (Some(Move { rect: (x, y, w, h), show }), Some(hwnd)) = (planned, hwnd(window)) else { return };
     unsafe {
         let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), x, y, w.max(1), h.max(1), SWP_NOACTIVATE | SWP_NOSENDCHANGING);
-        if !state.shown && !state.suppressed {
+        if show {
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-            state.shown = true;
         }
     }
 }
@@ -141,17 +158,22 @@ pub fn placement_of(state: &NotchState) -> Placement {
 pub fn set_shape(app: &AppHandle, shape: Shape) -> Option<Placement> {
     let window = window(app)?;
     let notch = app.state::<Notch>();
-    let mut guard = notch.0.lock().unwrap();
-    let state = guard.as_mut()?;
-    if shape.edge == state.edge {
-        state.shape = Some(shape);
-        if !state.dragging {
-            let (lo, hi) = limits_for(state, &shape);
-            state.point = dock::clamp(state.point, lo, hi);
+    let (planned, place) = {
+        let mut guard = notch.0.lock().unwrap();
+        let state = guard.as_mut()?;
+        let mut planned = None;
+        if shape.edge == state.edge {
+            state.shape = Some(shape);
+            if !state.dragging {
+                let (lo, hi) = limits_for(state, &shape);
+                state.point = dock::clamp(state.point, lo, hi);
+            }
+            planned = plan(state);
         }
-        apply(&window, state);
-    }
-    Some(placement_of(state))
+        (planned, placement_of(state))
+    };
+    perform(&window, planned);
+    Some(place)
 }
 
 pub fn placement(app: &AppHandle) -> Option<Placement> {
@@ -169,31 +191,30 @@ pub fn redock(app: &AppHandle, config: &Config) {
     state.edge = fresh.edge;
     state.point = fresh.point;
     let place = placement_of(state);
-    if let Some(window) = window(app) {
-        apply(&window, state);
-    }
+    let planned = plan(state);
     drop(guard);
+    if let Some(window) = window(app) {
+        perform(&window, planned);
+    }
     let _ = app.emit_to(LABEL, "notch-dock", place);
 }
 
 /// Hides or re-shows the notch (full-screen apps), without touching focus.
 pub fn set_suppressed(app: &AppHandle, suppressed: bool) {
     let notch = app.state::<Notch>();
-    let mut guard = notch.0.lock().unwrap();
-    let (Some(state), Some(window)) = (guard.as_mut(), window(app)) else { return };
-    if state.suppressed == suppressed {
-        return;
-    }
-    state.suppressed = suppressed;
-    if let Some(hwnd) = hwnd(&window) {
+    let show = {
+        let mut guard = notch.0.lock().unwrap();
+        let Some(state) = guard.as_mut() else { return };
+        if state.suppressed == suppressed {
+            return;
+        }
+        state.suppressed = suppressed;
+        state.shown = !suppressed && state.shape.is_some();
+        state.shown
+    };
+    if let Some(hwnd) = window(app).as_ref().and_then(hwnd) {
         unsafe {
-            if suppressed {
-                let _ = ShowWindow(hwnd, SW_HIDE);
-                state.shown = false;
-            } else if state.shape.is_some() {
-                let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-                state.shown = true;
-            }
+            let _ = ShowWindow(hwnd, if show { SW_SHOWNOACTIVATE } else { SW_HIDE });
         }
     }
 }
@@ -217,8 +238,11 @@ pub fn on_config_changed(app: &AppHandle, old: &Config, new: &Config) {
         || old.notch.screen != new.notch.screen
         || old.notch.monitor_id != new.notch.monitor_id
         || old.notch.position != new.notch.position;
-    if moved {
+    if moved && !app.state::<Notch>().0.lock().unwrap().as_ref().is_some_and(|s| s.dragging) {
         redock(app, new);
+    }
+    if old.notch.hide_fullscreen != new.notch.hide_fullscreen {
+        watch::settings_changed();
     }
 }
 
