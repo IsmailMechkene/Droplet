@@ -1,5 +1,8 @@
 //! Small Win32 helpers that do not belong to a feature module.
 
+pub mod autostart;
+pub mod shell;
+
 use windows::Win32::Globalization::GetUserDefaultLocaleName;
 use windows::Win32::System::Time::{GetTimeZoneInformation, TIME_ZONE_INFORMATION};
 

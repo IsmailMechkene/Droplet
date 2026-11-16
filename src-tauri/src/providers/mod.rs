@@ -156,12 +156,14 @@ pub fn check_status(status: u16, retry_after: Option<u64>, body: String) -> Resu
     }
 }
 
-pub fn credential_path(id: ProviderId, config: &Config) -> Option<PathBuf> {
+/// Every file of another app that this provider reads (the first one is the
+/// credential shown in Accounts). This list is the audit list.
+pub fn files(id: ProviderId, config: &Config) -> Vec<PathBuf> {
     let _ = config;
     match id {
-        ProviderId::Claude => claude::credential_path(),
-        ProviderId::Codex => codex::credential_path(),
-        _ => None,
+        ProviderId::Claude => claude::credential_path().into_iter().collect(),
+        ProviderId::Codex => codex::credential_path().into_iter().collect(),
+        _ => Vec::new(),
     }
 }
 

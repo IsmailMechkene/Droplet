@@ -5,16 +5,20 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod accounts;
 mod clock;
 mod commands;
 mod config;
 mod forecast;
 mod i18n;
+mod menu;
 mod net;
 mod notch;
 mod providers;
 mod scheduler;
 mod settings;
+mod settings_window;
+mod shortcut;
 mod state;
 mod suggest;
 mod win;
@@ -24,6 +28,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
 use tauri::RunEvent;
+use tauri_plugin_global_shortcut::ShortcutState;
 
 use state::Core;
 
@@ -48,7 +53,23 @@ fn main() {
     });
 
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
+        // A second launch opens the settings of the running instance
+        // ("droplet.exe --settings=accounts" opens a given section).
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let section = args.iter().find_map(|a| a.strip_prefix("--settings="));
+            settings_window::open(app, section);
+        }))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        shortcut::pressed(app);
+                    }
+                })
+                .build(),
+        )
+        .plugin(tauri_plugin_dialog::init())
+        .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .manage(core.clone())
         .manage(notch::Notch(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
@@ -58,11 +79,26 @@ fn main() {
             commands::refresh,
             commands::card_opened,
             commands::notch_shape,
+            commands::notch_menu,
+            commands::notch_blur,
+            commands::notch_recentre,
+            commands::open_settings,
+            commands::settings_data,
+            commands::settings_window,
+            commands::show_file_location,
+            commands::open_project_page,
+            commands::open_config_file,
+            commands::pick_agy_path,
+            commands::notch_preview,
             commands::quit,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
-            notch::create(&handle, &core.config())?;
+            let config = core.config();
+            // A shortcut that is already taken is not fatal; Settings shows it can be changed.
+            let _ = shortcut::replace(&handle, "", &config.general.shortcut);
+            let _ = win::autostart::set(config.general.start_with_windows);
+            notch::create(&handle, &config)?;
             scheduler::start(handle);
             Ok(())
         })

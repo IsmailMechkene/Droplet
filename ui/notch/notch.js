@@ -752,6 +752,7 @@ async function start() {
   listen('notch-command', (cmd) => {
     if (cmd === 'rearrange') setJiggle(!st.jiggle);
     if (cmd === 'keep_open') { st.keepOpen = !st.keepOpen; update(); }
+    if (cmd === 'kick' && !reducedMotion()) { sp.lift.c = springFor('bouncy'); sp.lift.v += 0.5; update(); }
     if (cmd.open_card) { st.tabOpen = true; touch(); openCard(cmd.open_card).then(() => cells.get(cmd.open_card)?.el.focus()); }
   });
 

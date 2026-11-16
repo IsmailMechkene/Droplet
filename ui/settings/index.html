@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Droplet Settings</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../shared/ring.css">
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div id="window">
+    <header id="titlebar" data-tauri-drag-region>
+      <span class="drop"></span>
+      <span id="win-title" data-tauri-drag-region></span>
+      <span id="saved" role="status"><span>✓</span><span id="saved-text"></span></span>
+      <span class="grow" data-tauri-drag-region></span>
+      <button id="win-min" class="win-btn" type="button"><img src="../icons/subtract.svg" alt=""></button>
+      <button id="win-max" class="win-btn" type="button"><img src="../icons/square.svg" alt="" class="small"></button>
+      <button id="win-close" class="win-btn close" type="button"><img src="../icons/dismiss.svg" alt=""></button>
+    </header>
+
+    <div id="main">
+      <aside id="side">
+        <div class="brand">
+          <div class="brand-mark"><span class="drop"></span></div>
+          <div><div class="brand-name">Droplet</div><div class="brand-tag" id="tagline"></div></div>
+        </div>
+        <div class="search">
+          <input id="search" type="text" autocomplete="off" spellcheck="false">
+          <img src="../icons/search.svg" alt="">
+        </div>
+        <nav id="nav"><div id="nav-mark"></div></nav>
+      </aside>
+
+      <section id="content">
+        <h1 id="title"></h1>
+        <div id="preview" hidden>
+          <div id="preview-caption"></div>
+          <div id="preview-stage"><div id="preview-bounce"></div></div>
+        </div>
+        <div id="page"></div>
+      </section>
+    </div>
+
+    <div id="scrim" hidden>
+      <div id="dialog" role="dialog" aria-modal="true">
+        <div class="dialog-body"><div id="dialog-title"></div><div id="dialog-text"></div></div>
+        <div class="dialog-actions">
+          <button id="dialog-yes" type="button" class="danger-solid"></button>
+          <button id="dialog-no" type="button" class="btn"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="settings.js"></script>
+</body>
+</html>

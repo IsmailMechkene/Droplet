@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST, SWP_NOACTIVATE,
+    GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST, SWP_NOACTIVATE,
     SWP_NOSENDCHANGING, SW_HIDE, SW_SHOWNOACTIVATE, WS_CAPTION, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
     WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
 };
@@ -206,7 +206,11 @@ pub fn on_config_changed(app: &AppHandle, old: &Config, new: &Config) {
         return;
     }
     if window(app).is_none() {
-        let _ = create(app, new);
+        // Off the event-loop thread: building a webview there would block.
+        let (app, config) = (app.clone(), new.clone());
+        std::thread::spawn(move || {
+            let _ = create(&app, &config);
+        });
         return;
     }
     let moved = old.notch.edge != new.notch.edge
@@ -216,4 +220,47 @@ pub fn on_config_changed(app: &AppHandle, old: &Config, new: &Config) {
     if moved {
         redock(app, new);
     }
+}
+
+fn set_no_activate(hwnd: HWND, on: bool) {
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let ex = if on { ex | WS_EX_NOACTIVATE.0 } else { ex & !WS_EX_NOACTIVATE.0 };
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex as isize);
+    }
+}
+
+/// Gives the notch keyboard focus. Only done on an explicit request (the
+/// shortcut, or a right-click), never when the notch merely shows or updates.
+pub fn focus(app: &AppHandle) {
+    let Some(window) = window(app) else { return };
+    if let Some(hwnd) = hwnd(&window) {
+        set_no_activate(hwnd, false);
+        unsafe {
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+    let _ = window.set_focus();
+}
+
+/// Back to never taking focus (after Escape, or when the keyboard session ends).
+pub fn blur(app: &AppHandle) {
+    if let Some(hwnd) = window(app).as_ref().and_then(hwnd) {
+        set_no_activate(hwnd, true);
+    }
+}
+
+/// Shows the right-click menu at the cursor.
+pub fn popup_menu(app: &AppHandle, keep_open: bool, jiggle: bool) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let (Some(window), Ok(menu)) = (window(&handle), crate::menu::notch_menu(&handle, keep_open, jiggle)) else { return };
+        // A popup menu only closes on an outside click when its window is in the foreground.
+        if let Some(hwnd) = hwnd(&window) {
+            unsafe {
+                let _ = SetForegroundWindow(hwnd);
+            }
+        }
+        let _ = window.popup_menu(&menu);
+    });
 }

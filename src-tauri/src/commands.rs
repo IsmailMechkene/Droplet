@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::clock;
 use crate::config::Config;
@@ -14,7 +15,10 @@ use crate::notch::dock::{Placement, Shape};
 use crate::providers::ProviderId;
 use crate::scheduler::{Msg, Reason};
 use crate::state::{Core, Snapshot};
-use crate::{notch, settings};
+use crate::accounts::{self, AccountView, FileView};
+use crate::notch::monitors::{self, MonitorChoice};
+use crate::win::shell::{self, ProjectPage};
+use crate::{notch, providers, settings, settings_window};
 
 /// Everything a window needs to draw its first frame.
 #[derive(Serialize)]
@@ -76,4 +80,103 @@ pub fn notch_shape(app: AppHandle, shape: Shape) -> Option<Placement> {
 #[tauri::command]
 pub fn quit(app: AppHandle) {
     app.exit(0);
+}
+
+// ---------------------------------------------------------------- notch
+
+#[tauri::command]
+pub fn notch_menu(app: AppHandle, keep_open: bool, jiggle: bool) {
+    notch::popup_menu(&app, keep_open, jiggle);
+}
+
+/// Escape in the notch: give up keyboard focus again.
+#[tauri::command]
+pub fn notch_blur(app: AppHandle) {
+    notch::blur(&app);
+}
+
+/// Moves the notch back to the middle of its edge.
+#[tauri::command]
+pub fn notch_recentre(app: AppHandle, core: State<Arc<Core>>) -> Result<(), String> {
+    let old = core.config();
+    let mut new = old.clone();
+    new.notch.position.set(old.notch.edge, 0.5);
+    settings::commit(&app, old, new)
+}
+
+// ---------------------------------------------------------------- settings window
+
+/// Everything the settings window needs besides `bootstrap`.
+#[derive(Serialize)]
+pub struct SettingsData {
+    accounts: Vec<AccountView>,
+    files: Vec<FileView>,
+    monitors: Vec<MonitorChoice>,
+    version: &'static str,
+    config_path: String,
+}
+
+#[tauri::command]
+pub fn open_settings(app: AppHandle, section: Option<String>) {
+    settings_window::open(&app, section.as_deref());
+}
+
+#[tauri::command]
+pub fn settings_data(core: State<Arc<Core>>) -> SettingsData {
+    SettingsData {
+        accounts: accounts::accounts(&core, clock::now()),
+        files: accounts::files(&core),
+        monitors: monitors::choices(),
+        version: env!("CARGO_PKG_VERSION"),
+        config_path: "%APPDATA%\\Droplet\\config.json".into(),
+    }
+}
+
+/// Window controls for the custom title bar: ready | minimize | maximize | close.
+#[tauri::command]
+pub fn settings_window(app: AppHandle, action: String) {
+    match action.as_str() {
+        "ready" => settings_window::show(&app),
+        "minimize" => settings_window::minimize(&app),
+        "maximize" => settings_window::toggle_maximize(&app),
+        "close" => settings_window::close(&app),
+        _ => {}
+    }
+}
+
+/// Selects a provider's credential file in Explorer. The file is not read.
+#[tauri::command]
+pub fn show_file_location(core: State<Arc<Core>>, id: String) -> bool {
+    let Some(id) = ProviderId::from_key(&id) else { return false };
+    providers::files(id, &core.config()).first().is_some_and(|path| shell::reveal(path))
+}
+
+/// Opens one of this project's GitHub pages: releases | license | source.
+#[tauri::command]
+pub fn open_project_page(page: String) -> bool {
+    ProjectPage::from_key(&page).is_some_and(shell::open_project_page)
+}
+
+/// Opens Droplet's own config file with the default editor.
+#[tauri::command]
+pub fn open_config_file(core: State<Arc<Core>>) -> bool {
+    let config = core.config();
+    if !core.dir.join(crate::config::FILE_NAME).exists() {
+        let _ = crate::config::save(&core.dir, &config);
+    }
+    shell::open_own_file(&core.dir, crate::config::FILE_NAME)
+}
+
+/// File picker for agy.exe. The chosen path is saved as the Antigravity override.
+#[tauri::command]
+pub async fn pick_agy_path(app: AppHandle) -> Result<(), String> {
+    let picked = app.dialog().file().add_filter("agy.exe", &["exe"]).blocking_pick_file();
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else { return Ok(()) };
+    settings::change(&app, "providers.antigravity.agy_path", path.display().to_string().into())
+}
+
+/// "Preview" next to Spring feel: gives the real notch a little bounce.
+#[tauri::command]
+pub fn notch_preview(app: AppHandle) {
+    let _ = app.emit_to(notch::LABEL, "notch-command", "kick");
 }

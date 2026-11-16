@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Both windows may listen to events. Everything else goes through Droplet's own commands.",
   "windows": ["notch", "settings"],
-  "permissions": ["core:event:default"]
+  "permissions": ["core:event:default", "core:window:allow-start-dragging"]
 }
