@@ -1,0 +1,107 @@
+/* Design tokens shared by the notch and the settings window.
+   Light is the default; [data-theme="dark"] is set by shared/theme.js. */
+:root {
+  color-scheme: light;
+  --dp-font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --dp-mono: 'Cascadia Mono', Consolas, ui-monospace, monospace;
+
+  --dp-bg: #F7F7F8;
+  --dp-ink: #1A1B1E;
+  --dp-ink2: #5C5F68;
+  --dp-ink3: #8A8D95;
+  --dp-track: #E3E4E8;
+  --dp-line: #E6E7EA;
+  --dp-hi: transparent;
+  --dp-shadow: drop-shadow(0 1px 1.5px rgba(20, 22, 28, .12)) drop-shadow(0 6px 16px rgba(20, 22, 28, .16));
+  --dp-cardshadow: 0 10px 30px rgba(20, 22, 28, .18), 0 1px 3px rgba(20, 22, 28, .10);
+  --dp-ok: oklch(0.70 0.15 152);
+  --dp-warn: oklch(0.78 0.15 75);
+  --dp-danger: oklch(0.62 0.20 27);
+  --dp-stale: #A6A8AE;
+  --dp-accent: oklch(0.55 0.13 240);
+  --dp-accentink: #FFFFFF;
+  --dp-grip: #A6A8AE;
+  --dp-grip-hover: rgba(0, 0, 0, .06);
+  --dp-badge: #5C5F68;
+  --dp-chip: #ECEDF0;
+  --dp-icon: opacity(.78);
+  --dp-win: #F3F3F5;
+  --dp-winline: rgba(0, 0, 0, .10);
+  --dp-winshadow: 0 8px 32px rgba(20, 22, 28, .20), 0 2px 6px rgba(20, 22, 28, .08);
+  --dp-card: #FBFBFC;
+  --dp-ctl: #FFFFFF;
+  --dp-ctlline: #DCDDE1;
+  --dp-ctlhover: #F4F4F6;
+  --dp-segon: #1A1B1E;
+  --dp-segonink: #FFFFFF;
+  --dp-navsel: #E7E8EB;
+  --dp-navhover: #EBECEF;
+  --dp-focus: #1A1B1E;
+  --dp-okbg: oklch(0.94 0.05 152);
+  --dp-okink: oklch(0.45 0.11 152);
+  --dp-warnink: oklch(0.50 0.11 70);
+  --dp-dangerink: oklch(0.52 0.19 27);
+  --dp-scrim: rgba(20, 22, 28, .28);
+  --dp-wall: #DADDE2;
+  --dp-wallink: #5C5F68;
+
+  /* Spring easings. shared/theme.js overwrites these from the motion settings. */
+  --spring-snappy: 360ms cubic-bezier(.3, 1.25, .5, 1);
+  --spring-bouncy: 420ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --dp-bg: #141517;
+  --dp-ink: #ECEDEF;
+  --dp-ink2: #A3A6AE;
+  --dp-ink3: #6F727A;
+  --dp-track: #2C2E33;
+  --dp-line: #2A2C30;
+  --dp-hi: rgba(255, 255, 255, .08);
+  --dp-shadow: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)) drop-shadow(0 8px 20px rgba(0, 0, 0, .45));
+  --dp-cardshadow: 0 12px 32px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .08);
+  --dp-ok: oklch(0.74 0.15 152);
+  --dp-warn: oklch(0.80 0.15 78);
+  --dp-danger: oklch(0.66 0.19 27);
+  --dp-stale: #5F6268;
+  --dp-accent: oklch(0.74 0.12 235);
+  --dp-accentink: #0E1A24;
+  --dp-grip: #6F727A;
+  --dp-grip-hover: rgba(255, 255, 255, .07);
+  --dp-badge: #8A8D95;
+  --dp-chip: #26282C;
+  --dp-icon: invert(1) opacity(.82);
+  --dp-win: #1C1D20;
+  --dp-winline: rgba(255, 255, 255, .09);
+  --dp-winshadow: 0 10px 40px rgba(0, 0, 0, .55);
+  --dp-card: #232428;
+  --dp-ctl: #2A2B30;
+  --dp-ctlline: #393B41;
+  --dp-ctlhover: #313238;
+  --dp-segon: #ECEDEF;
+  --dp-segonink: #141517;
+  --dp-navsel: #2B2C31;
+  --dp-navhover: #27282C;
+  --dp-focus: #ECEDEF;
+  --dp-okbg: oklch(0.32 0.06 152);
+  --dp-okink: oklch(0.82 0.12 152);
+  --dp-warnink: oklch(0.82 0.12 78);
+  --dp-dangerink: oklch(0.74 0.16 27);
+  --dp-scrim: rgba(0, 0, 0, .45);
+  --dp-wall: #2E3238;
+  --dp-wallink: #A3A6AE;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  font-family: var(--dp-font);
+  color: var(--dp-ink);
+  font-variant-numeric: tabular-nums;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+button { font: inherit; color: inherit; }
+img { -webkit-user-drag: none; }

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Droplet</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../shared/ring.css">
+  <link rel="stylesheet" href="notch.css">
+</head>
+<body>
+  <!-- The notch shape and everything attached to it. Positions are set by notch.js. -->
+  <div id="notch">
+    <svg id="shape" aria-hidden="true">
+      <g id="shape-g">
+        <path id="body"></path>
+        <path id="stroke"></path>
+      </g>
+    </svg>
+    <div id="layer">
+      <div id="hit"></div>
+      <div id="pill"><div id="pilltext"><span class="dot"></span><span class="a"></span><span class="b"></span></div></div>
+      <div id="fillet1" class="fillet"></div>
+      <div id="fillet2" class="fillet"></div>
+      <div id="cells"></div>
+      <button id="gear" type="button"><img src="../icons/settings.svg" alt=""></button>
+      <div id="grip"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    </div>
+  </div>
+
+  <!-- The usage card: a background that morphs out of a ring, an arrow, and the content. -->
+  <div id="cardbg"></div>
+  <div id="arrow"></div>
+  <div id="card" role="region"></div>
+
+  <script type="module" src="notch.js"></script>
+</body>
+</html>

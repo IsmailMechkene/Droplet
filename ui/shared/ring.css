@@ -1,0 +1,35 @@
+/* The usage ring: track, arc, optional weekly ring, pace tick, glyph, % label. */
+.ring { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; transition: opacity 300ms ease; }
+.ring.stale { opacity: .6; }
+.ring.dimmed { opacity: .4; }
+.ring-disc { position: relative; border-radius: 50%; }
+.ring-disc svg { display: block; overflow: visible; }
+.ring circle, .ring line { fill: none; }
+.ring .track { stroke: var(--dp-track); }
+.ring .wtrack { stroke: var(--dp-track); stroke-width: 1.6px; }
+.ring .warc { stroke-width: 1.6px; stroke-linecap: round; transition: stroke-dashoffset var(--spring-bouncy), stroke 240ms ease; }
+.ring .spin { transform-origin: center; transform-box: fill-box; }
+.ring .arc { stroke-linecap: round; transition: stroke-dashoffset var(--spring-bouncy), stroke 240ms ease, opacity 200ms ease; }
+.ring .sweep { stroke: var(--dp-ok); stroke-linecap: round; opacity: 0; }
+.ring .tick-bg { stroke: var(--dp-bg); stroke-width: 3.5px; stroke-linecap: round; transition: opacity 200ms ease; }
+.ring .tick { stroke: var(--dp-ink); stroke-width: 1.5px; stroke-linecap: round; transition: opacity 200ms ease; }
+
+.ring-glyph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; letter-spacing: -0.02em; color: var(--dp-ink2); }
+.ring-glyph img { display: block; filter: var(--dp-icon); }
+.ring-glyph img.color { filter: none; }
+.ring.stale .ring-glyph { color: var(--dp-stale); }
+.ring.stale .ring-glyph img { filter: grayscale(1) var(--dp-icon); opacity: .6; }
+
+.ring-danger { position: absolute; right: -3px; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--dp-danger); color: #fff; font-size: 8.5px; font-weight: 800; line-height: 11px; text-align: center; box-shadow: 0 0 0 1.5px var(--dp-bg); }
+.ring-badge { position: absolute; left: -5px; top: -5px; width: 17px; height: 17px; padding: 0; border: none; border-radius: 50%; background: var(--dp-badge); color: #fff; font-size: 13px; font-weight: 700; line-height: 16px; text-align: center; cursor: pointer; box-shadow: 0 0 0 1.5px var(--dp-bg); }
+
+.ring-label { display: flex; align-items: flex-start; font-weight: 600; white-space: nowrap; color: var(--dp-ink); }
+.ring.muted .ring-label { color: var(--dp-ink3); }
+.ring-label .digit { display: inline-block; overflow: hidden; width: 1ch; transition: width 220ms ease, opacity 180ms ease; }
+.ring-label .digit.off { width: 0; opacity: 0; }
+.ring-label .digit > span { display: flex; flex-direction: column; transition: transform var(--spring-bouncy); }
+.ring-label .unit { font-size: .85em; }
+
+:root[data-motion="reduced"] .ring .arc,
+:root[data-motion="reduced"] .ring .warc { transition: stroke-dashoffset 200ms ease, stroke 200ms ease; }
+:root[data-motion="reduced"] .ring-label .digit > span { transition: transform 200ms ease; }

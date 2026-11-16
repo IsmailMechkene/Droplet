@@ -1,1 +1,3 @@
 design/
+target/
+src-tauri/gen/
