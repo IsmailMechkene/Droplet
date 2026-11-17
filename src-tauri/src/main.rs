@@ -19,15 +19,18 @@ pub(crate) use trace;
 static START: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
 
 mod accounts;
+mod alerts;
 mod clock;
 mod commands;
 mod config;
 mod forecast;
+mod history;
 mod i18n;
 mod menu;
 mod net;
 mod netlog;
 mod notch;
+mod notify;
 mod providers;
 mod scheduler;
 mod settings;
@@ -54,10 +57,23 @@ fn data_dir() -> PathBuf {
     base.join("Droplet")
 }
 
+/// Windows 11 hides new tray icons in the overflow menu: say how to pin it, once.
+fn first_run_tip(app: &tauri::AppHandle, config: &config::Config) {
+    if config.general.app_icon == config::AppIcon::Hidden || win::os_build() < 22_000 {
+        return;
+    }
+    let core = tauri::Manager::state::<Arc<Core>>(app);
+    let i18n = core.i18n.read().unwrap();
+    notify::toast(app, &i18n.t("firstrun.title"), &i18n.t("firstrun.body"));
+}
+
 fn main() {
     let dir = data_dir();
     let _ = std::fs::create_dir_all(&dir);
+    // No config file yet means this is the first start on this PC.
+    let first_run = !dir.join(config::FILE_NAME).exists();
     let config = config::load(&dir);
+    let history = scheduler::open_history(&dir);
     let core = Arc::new(Core {
         i18n: RwLock::new(i18n::I18n::new(config.general.language, &win::system_locale())),
         config: RwLock::new(config),
@@ -66,6 +82,8 @@ fn main() {
         net: net::Net::new(),
         scheduler: Mutex::new(None),
         pick: Mutex::new(None),
+        history: Mutex::new(history),
+        alerts: Mutex::new(Default::default()),
     });
 
     let app = tauri::Builder::default()
@@ -85,6 +103,7 @@ fn main() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .manage(core.clone())
         .manage(notch::Notch(Mutex::new(None)))
@@ -109,6 +128,8 @@ fn main() {
             commands::pick_agy_path,
             commands::notch_preview,
             commands::open_network_log,
+            commands::export_history,
+            commands::clear_history,
             commands::quit,
         ])
         .setup(move |app| {
@@ -118,6 +139,10 @@ fn main() {
             let _ = shortcut::replace(&handle, "", &config.general.shortcut);
             let _ = win::autostart::set(config.general.start_with_windows);
             notch::create(&handle, &config)?;
+            if first_run {
+                let _ = config::save(&core.dir, &config);
+                first_run_tip(&handle, &config);
+            }
             notch::watch::start(&handle);
             scheduler::start(handle);
             Ok(())

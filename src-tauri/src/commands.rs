@@ -198,3 +198,25 @@ pub fn notch_drag_start(app: AppHandle) {
 pub fn open_network_log(core: State<Arc<Core>>) -> bool {
     crate::netlog::open(&core.dir, &core.config(), &core.net.log_snapshot())
 }
+
+/// Writes the history as CSV to Downloads and selects it in Explorer. False when there is nothing to export.
+#[tauri::command]
+pub fn export_history(core: State<Arc<Core>>) -> bool {
+    let rows = match core.history.lock().unwrap().as_ref() {
+        Some(history) => history.all_rows(),
+        None => return false,
+    };
+    let Some(downloads) = crate::win::downloads_dir().filter(|_| !rows.is_empty()) else { return false };
+    let offset = crate::win::utc_offset();
+    let path = crate::history::export_path(&downloads, clock::now(), offset);
+    std::fs::write(&path, crate::history::to_csv(&rows, offset)).is_ok() && shell::reveal(&path)
+}
+
+/// Deletes all stored history (after the confirmation in Settings).
+#[tauri::command]
+pub fn clear_history(core: State<Arc<Core>>) {
+    if let Some(history) = core.history.lock().unwrap().as_ref() {
+        let _ = history.clear();
+    }
+    core.send(Msg::HistoryCleared);
+}

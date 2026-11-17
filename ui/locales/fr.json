@@ -350,5 +350,15 @@
   "s.about.diagnostics.copy": "Copier les diagnostics",
   "s.about.diagnostics.copied": "Copié",
   "s.about.config.label": "Fichier de configuration",
-  "s.about.config.open": "Ouvrir le fichier de configuration"
+  "s.about.config.open": "Ouvrir le fichier de configuration",
+  "alert.level": "{name} {pct} %",
+  "alert.out_at": "Épuisé à {at}",
+  "alert.warning": "Niveau d’avertissement atteint",
+  "alert.critical": "Niveau critique atteint",
+  "alert.reset.a": "{name} réinitialisé",
+  "alert.reset.b": "100 % disponible",
+  "alert.soon.a": "{name} se réinitialise dans 10 min",
+  "alert.soon.b": "{pct} % utilisé pour l’instant",
+  "summary.title": "La semaine dernière dans Droplet",
+  "summary.line": "{name} : moyenne {avg} %, pic {peak} %"
 }

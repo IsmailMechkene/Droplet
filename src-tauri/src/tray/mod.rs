@@ -20,7 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::SM_CXSMICON;
 use crate::config::{AppIcon, Config, TrayIcons};
 use crate::i18n::I18n;
 use crate::state::{Core, ProviderView, Snapshot};
-use crate::{notch, settings_window, shortcut};
+use crate::{notch, shortcut};
 use draw::RingIcon;
 
 const LOGO_ID: &str = "logo";

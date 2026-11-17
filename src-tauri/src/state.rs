@@ -82,6 +82,10 @@ pub struct Core {
     pub scheduler: Mutex<Option<Sender<Msg>>>,
     /// The current "use this one now" pick, kept for hysteresis.
     pub pick: Mutex<Option<ProviderId>>,
+    /// history.db, or None if it could not be opened.
+    pub history: Mutex<Option<crate::history::History>>,
+    /// Alerts already sent.
+    pub alerts: Mutex<crate::alerts::Memory>,
 }
 
 impl Core {
@@ -457,6 +461,8 @@ mod tests {
             net: Net::new(),
             scheduler: Mutex::new(None),
             pick: Mutex::new(None),
+            history: Mutex::new(None),
+            alerts: Mutex::new(Default::default()),
         }
     }
 
