@@ -73,7 +73,7 @@ fn refresh_all(app: &AppHandle, core: &Core, reason: Reason) {
 
 fn refresh_one(app: &AppHandle, core: &Core, id: ProviderId, reason: Reason) {
     let config = core.config();
-    if !config.providers.get(id).enabled || !providers::is_available(id) {
+    if !config.providers.get(id).enabled {
         return;
     }
     // Opening a card only re-reads Antigravity; for the others it just refreshes the wording.
@@ -85,6 +85,17 @@ fn refresh_one(app: &AppHandle, core: &Core, id: ProviderId, reason: Reason) {
     {
         let mut all = core.providers.lock().unwrap();
         let state = all.entry(id).or_default();
+        // agy.exe is heavy: never on the timer, and at most once per 10 minutes.
+        if id == ProviderId::Antigravity {
+            let recent = state.checked_at.is_some_and(|at| now - at < providers::antigravity::MIN_INTERVAL_SECS);
+            if reason == Reason::Timer || recent {
+                if reason == Reason::CardOpen {
+                    drop(all);
+                    publish(app);
+                }
+                return;
+            }
+        }
         // Honour a 429 back-off even for manual refreshes.
         if now < state.retry_at {
             return;
@@ -93,7 +104,9 @@ fn refresh_one(app: &AppHandle, core: &Core, id: ProviderId, reason: Reason) {
     }
     publish(app);
 
+    crate::trace!("fetch {} start", id.key());
     let result = providers::fetch(id, &core.net, &config);
+    crate::trace!("fetch {} done: {:?}", id.key(), result.as_ref().map(|u| u.limits.len()));
     apply(core, id, result, clock::now());
     publish(app);
 }

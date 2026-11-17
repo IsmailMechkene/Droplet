@@ -21,14 +21,15 @@ pub fn fetch(net: &Net) -> Result<Usage, FetchError> {
     let path = credential_path().ok_or(FetchError::NotInstalled)?;
     let file = read_credential_file(&path)?;
     let oauth = &file["claudeAiOauth"];
-    let token = oauth["accessToken"].as_str().filter(|t| !t.is_empty()).ok_or(FetchError::SignIn)?;
+    // No token at all: not signed in on this PC, shown as "not installed".
+    let token = oauth["accessToken"].as_str().filter(|t| !t.is_empty()).ok_or(FetchError::NotInstalled)?;
     // An expired token is never sent; only Claude Code may refresh it.
     if let Some(expires_ms) = num(&oauth["expiresAt"]) {
         if clock::normalize_epoch(expires_ms) <= clock::now() {
             return Err(FetchError::SignIn);
         }
     }
-    let plan = oauth["subscriptionType"].as_str().map(title_case);
+    let plan = oauth["subscriptionType"].as_str().map(super::title_case);
 
     let headers = [("Authorization", format!("Bearer {token}")), ("anthropic-beta", "oauth-2025-04-20".to_string())];
     let resp = net.get(ProviderId::Claude, URL, &headers)?;
@@ -36,14 +37,6 @@ pub fn fetch(net: &Net) -> Result<Usage, FetchError> {
     let mut usage = parse(&body)?;
     usage.plan = plan;
     Ok(usage)
-}
-
-fn title_case(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
 }
 
 /// Maps an API kind to (window id, label key, window length).

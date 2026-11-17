@@ -99,7 +99,6 @@ pub fn accounts(core: &Core, now: i64) -> Vec<AccountView> {
                 Status::NoSubscription => (i18n.t("status.nosub"), "off"),
                 Status::NotInstalled => (i18n.t("status.missing"), "off"),
                 Status::Error(_) => (i18n.t("status.error"), "stale"),
-                Status::Unknown if !providers::is_available(*id) => (i18n.t("status.soon"), "off"),
                 Status::Unknown => (i18n.t("status.checking"), "off"),
             };
             let path: Option<PathBuf> = providers::files(*id, &config).into_iter().next();

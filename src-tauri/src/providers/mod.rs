@@ -5,8 +5,13 @@
 //!
 //! Credentials stay inside `fetch()`: they are never stored, logged or returned.
 
+pub mod antigravity;
 pub mod claude;
 pub mod codex;
+pub mod cursor;
+pub mod kimi;
+pub mod opencode;
+pub mod sqlite;
 
 use std::path::PathBuf;
 
@@ -112,7 +117,9 @@ pub struct Limit {
 
 impl Limit {
     pub fn new(id: &str, label: &str, used_pct: f64, resets_at: Option<i64>, window_secs: Option<i64>) -> Limit {
-        Limit { id: id.into(), label: label.into(), used_pct: used_pct.clamp(0.0, 100.0), resets_at, window_secs }
+        // Two decimals are plenty and keep float noise (27.000000000000004) out of the UI and history.
+        let used_pct = (used_pct.clamp(0.0, 100.0) * 100.0).round() / 100.0;
+        Limit { id: id.into(), label: label.into(), used_pct, resets_at, window_secs }
     }
 }
 
@@ -159,25 +166,35 @@ pub fn check_status(status: u16, retry_after: Option<u64>, body: String) -> Resu
 /// Every file of another app that this provider reads (the first one is the
 /// credential shown in Accounts). This list is the audit list.
 pub fn files(id: ProviderId, config: &Config) -> Vec<PathBuf> {
-    let _ = config;
-    match id {
-        ProviderId::Claude => claude::credential_path().into_iter().collect(),
-        ProviderId::Codex => codex::credential_path().into_iter().collect(),
-        _ => Vec::new(),
-    }
-}
-
-/// Whether this provider is implemented in the current build stage.
-pub fn is_available(id: ProviderId) -> bool {
-    matches!(id, ProviderId::Claude | ProviderId::Codex)
+    let list: Vec<Option<PathBuf>> = match id {
+        ProviderId::Claude => vec![claude::credential_path()],
+        ProviderId::Codex => vec![codex::credential_path()],
+        ProviderId::Cursor => vec![cursor::database_path(), cursor::local_state_path()],
+        ProviderId::Opencode => vec![opencode::auth_path(), opencode::database_path()],
+        ProviderId::Kimi => vec![kimi::credential_path()],
+        // Not read, but started: listed so the audit list is complete.
+        ProviderId::Antigravity => vec![antigravity::executable(config)],
+    };
+    list.into_iter().flatten().collect()
 }
 
 pub fn fetch(id: ProviderId, net: &Net, config: &Config) -> Result<Usage, FetchError> {
-    let _ = config;
     match id {
         ProviderId::Claude => claude::fetch(net),
         ProviderId::Codex => codex::fetch(net),
-        _ => Err(FetchError::NotInstalled),
+        ProviderId::Cursor => cursor::fetch(net),
+        ProviderId::Opencode => opencode::fetch(net),
+        ProviderId::Kimi => kimi::fetch(net),
+        ProviderId::Antigravity => antigravity::fetch(config),
+    }
+}
+
+/// "pro" → "Pro".
+pub fn title_case(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
     }
 }
 

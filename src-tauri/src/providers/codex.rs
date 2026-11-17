@@ -21,7 +21,8 @@ pub fn fetch(net: &Net) -> Result<Usage, FetchError> {
     let path = credential_path().ok_or(FetchError::NotInstalled)?;
     let file = read_credential_file(&path)?;
     let tokens = &file["tokens"];
-    let token = tokens["access_token"].as_str().filter(|t| !t.is_empty()).ok_or(FetchError::SignIn)?;
+    // No token at all: not signed in on this PC, shown as "not installed".
+    let token = tokens["access_token"].as_str().filter(|t| !t.is_empty()).ok_or(FetchError::NotInstalled)?;
     let mut headers = vec![("Authorization", format!("Bearer {token}"))];
     if let Some(account) = tokens["account_id"].as_str().filter(|a| !a.is_empty()) {
         headers.push(("ChatGPT-Account-Id", account.to_string()));
@@ -60,10 +61,7 @@ pub fn parse(body: &str, now: i64) -> Result<Usage, FetchError> {
     if limits.is_empty() {
         return Err(FetchError::Failed("no rate limits in response".into()));
     }
-    let plan = json["plan_type"].as_str().filter(|p| !p.is_empty()).map(|p| {
-        let mut c = p.chars();
-        c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
-    });
+    let plan = json["plan_type"].as_str().filter(|p| !p.is_empty()).map(super::title_case);
     Ok(Usage { plan, limits })
 }
 

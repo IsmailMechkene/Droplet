@@ -5,6 +5,19 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+/// Development trace on stderr. Compiled out of release builds, and never given
+/// credentials or file contents.
+macro_rules! trace {
+    ($($arg:tt)*) => {
+        if cfg!(debug_assertions) {
+            eprintln!("[{:>6}ms] {}", crate::START.elapsed().as_millis(), format!($($arg)*));
+        }
+    };
+}
+pub(crate) use trace;
+
+static START: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
+
 mod accounts;
 mod clock;
 mod commands;

@@ -33,6 +33,7 @@ pub struct Bootstrap {
 
 #[tauri::command]
 pub fn bootstrap(app: AppHandle, core: State<Arc<Core>>) -> Bootstrap {
+    crate::trace!("bootstrap");
     let i18n = core.i18n.read().unwrap();
     Bootstrap {
         config: core.config(),
@@ -127,6 +128,7 @@ pub fn open_settings(app: AppHandle, section: Option<String>) {
 
 #[tauri::command]
 pub fn settings_data(core: State<Arc<Core>>) -> SettingsData {
+    crate::trace!("settings_data");
     SettingsData {
         accounts: accounts::accounts(&core, clock::now()),
         files: accounts::files(&core),

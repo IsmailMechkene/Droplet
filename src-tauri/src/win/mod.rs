@@ -1,6 +1,8 @@
 //! Small Win32 helpers that do not belong to a feature module.
 
 pub mod autostart;
+pub mod conpty;
+pub mod dpapi;
 pub mod shell;
 
 use windows::Win32::Globalization::GetUserDefaultLocaleName;
