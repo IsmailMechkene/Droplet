@@ -418,7 +418,11 @@ function renderPill(L, d1, s0, collapsed) {
   const c = vert ? centre : Math.max(centre, s0 + half + 4);
   const grown = size.depth * amount;
   put(el.pill, rectOf(d1 - 2, d1 - 2 + grown, c - half, c + half));
-  el.pill.style.borderRadius = Math.min(15, grown / 2 + 2) + 'px';
+  // Round only the outer end: the end joined to the body is square, so no
+  // background shows through at the seam (the fillets give it the flare).
+  const rad = Math.min(15, grown / 2 + 2) + 'px', e = edge();
+  const [tl, tr, br, bl] = e === 'right' ? [rad, 0, 0, rad] : e === 'left' ? [0, rad, rad, 0] : e === 'top' ? [0, 0, rad, rad] : [rad, rad, 0, 0];
+  el.pill.style.borderRadius = `${tl} ${tr} ${br} ${bl}`;
   el.pill.style.display = 'flex';
   el.pilltext.style.opacity = amount > 0.7 ? 1 : 0;
   const fs = 8 * Math.min(1, amount * 1.6);
