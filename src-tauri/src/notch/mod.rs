@@ -13,9 +13,10 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use windows::Win32::Foundation::HWND;
+use windows::Win32::Graphics::Gdi::{CreateRectRgn, DeleteObject, SetWindowRgn};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST, SWP_NOACTIVATE,
-    SWP_NOSENDCHANGING, SW_HIDE, SW_SHOWNOACTIVATE, WS_CAPTION, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
+    SWP_NOMOVE, SWP_NOSENDCHANGING, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE, WS_CAPTION, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
     WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
 };
 
@@ -36,6 +37,9 @@ pub struct NotchState {
     /// Hidden because a full-screen app is in front.
     pub suppressed: bool,
     pub dragging: bool,
+    /// The window rectangle and region last sent to Windows, so unchanged ones are not re-sent.
+    applied_rect: Option<(i32, i32, i32, i32)>,
+    applied_region: Option<(i32, i32, i32, i32)>,
 }
 
 pub struct Notch(pub Mutex<Option<NotchState>>);
@@ -59,7 +63,7 @@ fn initial_state(config: &Config) -> Option<NotchState> {
     let edge = config.notch.edge;
     let (start, len) = dock::along_range(monitor.work, edge);
     let point = dock::from_fraction(config.notch.position.get(edge), start, len);
-    Some(NotchState { monitor, edge, point, shape: None, shown: false, suppressed: false, dragging: false })
+    Some(NotchState { monitor, edge, point, shape: None, shown: false, suppressed: false, dragging: false, applied_rect: None, applied_region: None })
 }
 
 pub fn window(app: &AppHandle) -> Option<WebviewWindow> {
@@ -124,6 +128,10 @@ fn limits_for(state: &NotchState, shape: &Shape) -> (f64, f64) {
 /// itself be waiting for the lock, so they must never run under it.
 pub struct Move {
     rect: (i32, i32, i32, i32),
+    /// False when the rectangle is the one already applied (only z-order is re-asserted).
+    moved: bool,
+    /// A new window region (left, top, right, bottom), when it changed.
+    region: Option<(i32, i32, i32, i32)>,
     show: bool,
 }
 
@@ -134,16 +142,36 @@ fn plan(state: &mut NotchState) -> Option<Move> {
         return None; // the UI has not laid out for the new edge yet
     }
     let rect = dock::window_rect(state.monitor.work, state.edge, state.point, &shape, state.monitor.scale);
+    let (w, h) = (rect.2.max(1), rect.3.max(1));
+    let region = match &shape.region {
+        Some(r) => dock::region_rect(r, state.monitor.scale, w, h),
+        None => (0, 0, w, h),
+    };
     let show = !state.shown && !state.suppressed;
     state.shown |= show;
-    Some(Move { rect, show })
+    let moved = state.applied_rect != Some(rect);
+    state.applied_rect = Some(rect);
+    let region = (state.applied_region != Some(region)).then_some(region);
+    if region.is_some() {
+        state.applied_region = region;
+    }
+    Some(Move { rect, moved, region, show })
 }
 
 /// Moves and sizes the native window. Never activates it.
 fn perform(window: &WebviewWindow, planned: Option<Move>) {
-    let (Some(Move { rect: (x, y, w, h), show }), Some(hwnd)) = (planned, hwnd(window)) else { return };
+    let (Some(Move { rect: (x, y, w, h), moved, region, show }), Some(hwnd)) = (planned, hwnd(window)) else { return };
     unsafe {
-        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), x, y, w.max(1), h.max(1), SWP_NOACTIVATE | SWP_NOSENDCHANGING);
+        if let Some((left, top, right, bottom)) = region {
+            // Clips drawing and hit-testing without moving the content. On success
+            // Windows owns the region; otherwise it is ours to free.
+            let rgn = CreateRectRgn(left, top, right, bottom);
+            if SetWindowRgn(hwnd, Some(rgn), true) == 0 {
+                let _ = DeleteObject(rgn.into());
+            }
+        }
+        let keep = if moved { SWP_NOACTIVATE } else { SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE };
+        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), x, y, w.max(1), h.max(1), keep | SWP_NOSENDCHANGING);
         if show {
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         }
@@ -215,6 +243,22 @@ pub fn set_suppressed(app: &AppHandle, suppressed: bool) {
     if let Some(hwnd) = window(app).as_ref().and_then(hwnd) {
         unsafe {
             let _ = ShowWindow(hwnd, if show { SW_SHOWNOACTIVATE } else { SW_HIDE });
+        }
+    }
+}
+
+/// Puts the notch back on top of the other always-on-top windows. Windows can
+/// push it under a maximised app when that app takes the foreground; nothing
+/// else re-raises it once the window stops moving, so this runs on every
+/// foreground change.
+pub fn raise(app: &AppHandle) {
+    let visible = app.state::<Notch>().0.lock().unwrap().as_ref().is_some_and(|s| s.shown && !s.suppressed);
+    if !visible {
+        return;
+    }
+    if let Some(hwnd) = window(app).as_ref().and_then(hwnd) {
+        unsafe {
+            let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
     }
 }

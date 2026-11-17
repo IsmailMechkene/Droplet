@@ -34,6 +34,30 @@ pub struct Shape {
     /// Room the content needs before and after the dock point, so it stays on screen.
     pub min_before: f64,
     pub min_after: f64,
+    /// The part of the window that is visible and clickable now, relative to the
+    /// window. The window itself is a stable envelope; only this region changes
+    /// as the notch animates, so the content never moves when it grows or shrinks.
+    #[serde(default)]
+    pub region: Option<Region>,
+}
+
+/// A rectangle in logical pixels, relative to the window's top-left corner.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct Region {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// The window region in physical pixels (left, top, right, bottom), rounded
+/// outwards and kept inside a `w` × `h` window.
+pub fn region_rect(region: &Region, scale: f64, w: i32, h: i32) -> (i32, i32, i32, i32) {
+    let left = ((region.x * scale).floor() as i32).clamp(0, w);
+    let top = ((region.y * scale).floor() as i32).clamp(0, h);
+    let right = (((region.x + region.w) * scale).ceil() as i32).clamp(left, w);
+    let bottom = (((region.y + region.h) * scale).ceil() as i32).clamp(top, h);
+    (left, top, right, bottom)
 }
 
 /// Where the notch ended up, in logical pixels, for the UI to lay out against.
@@ -246,14 +270,24 @@ mod tests {
 
     #[test]
     fn window_rect_is_flush_with_each_edge() {
-        let shape = |edge| Shape { edge, w: 80.0, h: 300.0, anchor: 150.0, min_before: 0.0, min_after: 0.0 };
+        let shape = |edge| Shape { edge, w: 80.0, h: 300.0, anchor: 150.0, min_before: 0.0, min_after: 0.0, region: None };
         assert_eq!(window_rect(WORK, Edge::Right, 520.0, &shape(Edge::Right), 1.0), (1840, 370, 80, 300));
         assert_eq!(window_rect(WORK, Edge::Left, 520.0, &shape(Edge::Left), 1.0), (0, 370, 80, 300));
-        let flat = |edge| Shape { edge, w: 300.0, h: 80.0, anchor: 150.0, min_before: 0.0, min_after: 0.0 };
+        let flat = |edge| Shape { edge, w: 300.0, h: 80.0, anchor: 150.0, min_before: 0.0, min_after: 0.0, region: None };
         assert_eq!(window_rect(WORK, Edge::Top, 960.0, &flat(Edge::Top), 1.0), (810, 0, 300, 80));
         assert_eq!(window_rect(WORK, Edge::Bottom, 960.0, &flat(Edge::Bottom), 1.0), (810, 960, 300, 80));
         // 150 % scaling: sizes and anchor scale, the edge stays flush.
         assert_eq!(window_rect(WORK, Edge::Right, 520.0, &shape(Edge::Right), 1.5), (1800, 295, 120, 450));
+    }
+
+    #[test]
+    fn region_rounds_outwards_and_stays_inside_the_window() {
+        let r = Region { x: 10.2, y: 0.0, w: 50.5, h: 300.0 };
+        assert_eq!(region_rect(&r, 1.0, 80, 300), (10, 0, 61, 300));
+        assert_eq!(region_rect(&r, 1.5, 120, 450), (15, 0, 92, 450));
+        // Past the window: clipped to it, never inverted.
+        let wide = Region { x: -5.0, y: 290.0, w: 200.0, h: 40.0 };
+        assert_eq!(region_rect(&wide, 1.0, 80, 300), (0, 290, 80, 300));
     }
 
     #[test]

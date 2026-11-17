@@ -110,6 +110,7 @@ fn evaluate() {
         }
     }
     notch::set_suppressed(app, config.notch.hide_fullscreen && fullscreen_app_in_front(&monitor));
+    notch::raise(app);
 }
 
 /// A monitor was added, removed or resized, or the taskbar moved: dock again

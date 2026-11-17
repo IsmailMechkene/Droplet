@@ -7,9 +7,15 @@
 // `toXY(d, s)` maps that to window pixels for whichever edge we are on, so the
 // same code draws all four edges.
 //
-// Window size. The native window is only as big as the content. Before an
-// animation the window grows (plus a margin for overshoot), then the animation
-// runs, then the window shrinks back. Rust does the actual move/resize.
+// Window size. The native window is a stable "envelope" big enough for
+// everything the notch can show in its current layout (body, pill, the card
+// next to any ring). It only changes when the layout does (edge, size, number
+// of rings), because moving or resizing a window makes WebView2 show the old
+// frame at the new position for a moment, which reads as a twitch. What is
+// visible and clickable is a window *region* inside the envelope: before an
+// animation it grows (plus a margin for overshoot), afterwards it shrinks back.
+// Changing the region never moves the content, and outside it clicks go to the
+// windows below. Rust applies both.
 //
 // CPU. requestAnimationFrame only runs while a spring is moving (or in jiggle
 // mode). At rest there are no timers and no frames.
@@ -27,6 +33,8 @@ const COLLAPSED = { depth: 6, len: 56 };
 const GEAR = 30, GRIP = 24;
 const TAIL = 8 + GEAR + 4 + GRIP; // gear + grip after the body
 const CARD_W = 260, CARD_GAP = 12;
+const CARD_H_GUESS = 360; // card height assumed for the envelope before one has been measured
+const CARD_SWITCH = 90;   // ms on another ring before an open card moves to it
 const K = 0.5523;       // circle approximation with cubic Béziers
 
 const $ = (id) => document.getElementById(id);
@@ -105,8 +113,13 @@ function ringCentre(L, index) {
 
 /** Where the open card goes, in edge space. Kept on screen using the room Rust reported. */
 function cardBox() {
-  const L = layout(), i = Math.max(0, L.ids.indexOf(st.card.id)), c = ringCentre(L, i);
-  const h = el.card.offsetHeight || 220;
+  const L = layout();
+  return cardBoxAt(L, Math.max(0, L.ids.indexOf(st.card.id)), el.card.offsetHeight || 220);
+}
+
+/** The card next to ring `i`, for a card `h` pixels tall. */
+function cardBoxAt(L, i, h) {
+  const c = ringCentre(L, i);
   const along = isVert() ? h : CARD_W, across = isVert() ? CARD_W : h;
   const lo = -st.place.before + 8, hi = st.place.after - 8;
   const s0 = clamp(c.s - along / 2, lo, Math.max(lo, hi - along));
@@ -119,8 +132,8 @@ function pillSize() {
   return isVert() ? { depth: text, half: 15 } : { depth: 30, half: text / 2 };
 }
 
-/** Bounding box of everything visible now or at the end of the current animation. */
-function extent(animating) {
+/** Bounding box of everything visible now or at the end of the current animation, in edge space. */
+function visibleBox(animating) {
   const L = layout(), col = collapsedNow();
   const depth = Math.max(col ? COLLAPSED.depth : L.depth, sp.depth.x);
   const len = Math.max(col ? COLLAPSED.len : L.len, sp.len.x);
@@ -140,15 +153,55 @@ function extent(animating) {
     sMax = Math.max(sMax, c.s1 + CARD_SHADOW);
   }
   const m = animating ? OVERSHOOT : 0;
-  // Never ask for more than the screen has.
-  sMin = Math.max(sMin - m, -st.place.before);
-  sMax = Math.min(sMax + m, st.place.after);
-  dMax = Math.min(dMax + m, st.place.depth);
-  const across = Math.ceil(dMax), along = Math.ceil(sMax - sMin);
-  const minAfter = L.len / 2 + TAIL + 14;
+  return { sMin: sMin - m, sMax: sMax + m, dMax: dMax + m };
+}
+
+// The envelope only grows while the layout stays the same, so the window keeps still.
+let env = null, cardH = CARD_H_GUESS, pillW = 0;
+
+/** Room for everything the notch can show in the current layout, in edge space. */
+function envelope() {
+  const L = layout(), key = [edge(), look().size, L.ids.length].join('|');
+  let dMax = L.depth + SHADOW, sMin = -L.len / 2 - 12 - SHADOW, sMax = L.len / 2 + TAIL + SHADOW;
+  if (st.pill) pillW = Math.max(pillW, el.pilltext.scrollWidth || 0);
+  if (st.card.vis) cardH = Math.max(cardH, el.card.offsetHeight || 0);
+  const p = isVert() ? { depth: Math.max(pillW, 160), half: 15 } : { depth: 30, half: Math.max(pillW, 160) / 2 };
+  L.ids.forEach((_, i) => {
+    const centre = ringCentre(L, i).s, c = isVert() ? centre : Math.max(centre, -L.len / 2 + p.half + 4);
+    dMax = Math.max(dMax, L.depth + p.depth + SHADOW);
+    sMin = Math.min(sMin, c - p.half - 8 - SHADOW);
+    sMax = Math.max(sMax, c + p.half + 8 + SHADOW);
+    const card = cardBoxAt(L, i, cardH);
+    dMax = Math.max(dMax, card.d1 + CARD_SHADOW);
+    sMin = Math.min(sMin, card.s0 - CARD_SHADOW);
+    sMax = Math.max(sMax, card.s1 + CARD_SHADOW);
+  });
+  const now = visibleBox(true); // anything unusual on screen right now (e.g. a taller card)
+  dMax = Math.max(dMax + OVERSHOOT, now.dMax);
+  sMin = Math.min(sMin - OVERSHOOT, now.sMin);
+  sMax = Math.max(sMax + OVERSHOOT, now.sMax);
+  if (!env || env.key !== key) env = { key, sMin, sMax, dMax };
+  else env = { key, sMin: Math.min(env.sMin, sMin), sMax: Math.max(env.sMax, sMax), dMax: Math.max(env.dMax, dMax) };
+  return env;
+}
+
+/** The window shape for Rust: the envelope, and the visible part of it as the region. */
+function extent(animating) {
+  const L = layout(), e = envelope(), v = visibleBox(animating);
+  // Along the edge the envelope is not clamped to the screen: that would change it
+  // after every drag. Any overhang lies outside the region (not drawn, not
+  // clickable) and is always under half the window, so Windows keeps the window
+  // on this monitor's DPI. The visible region never leaves the screen.
+  const anchor = Math.round(-e.sMin), along = Math.ceil(e.sMax - e.sMin), across = Math.ceil(Math.min(e.dMax, st.place.depth));
+  const lo = Math.max(e.sMin, -st.place.before), hi = Math.min(e.sMax, st.place.after);
+  const a0 = Math.floor(anchor + Math.max(v.sMin, lo)), a1 = Math.ceil(anchor + Math.min(v.sMax, hi));
+  const dep = Math.ceil(Math.min(v.dMax, across));
+  const far = edge() === 'right' || edge() === 'bottom';
+  const c0 = far ? across - dep : 0;
+  const region = isVert() ? { x: c0, y: a0, w: dep, h: a1 - a0 } : { x: a0, y: c0, w: a1 - a0, h: dep };
   return {
-    edge: edge(), w: isVert() ? across : along, h: isVert() ? along : across, anchor: Math.round(-sMin),
-    min_before: L.len / 2 + 14, min_after: minAfter,
+    edge: edge(), w: isVert() ? across : along, h: isVert() ? along : across, anchor,
+    min_before: L.len / 2 + 14, min_after: L.len / 2 + TAIL + 14, region,
   };
 }
 
@@ -228,7 +281,13 @@ function frame(t) {
   }
   render();
   if (moving || (st.jiggle && !reducedMotion())) raf = requestAnimationFrame(frame);
-  else setShape(extent(false)); // at rest: shrink the window back to the content
+  else setShape(extent(false)); // at rest: shrink the visible region back to the content
+}
+
+/** True when some spring is away from its target (or jiggle mode keeps frames running). */
+function anyMoving() {
+  if (st.jiggle && !reducedMotion()) return true;
+  return allSprings().some((s) => s.x !== s.t || s.v !== 0);
 }
 
 function wake() {
@@ -261,6 +320,7 @@ function retarget() {
 async function update() {
   retarget();
   syncClasses();
+  if (!anyMoving() && !raf) { await setShape(extent(false)); render(); return; } // nothing to animate
   await setShape(extent(true));
   retarget();
   wake();
@@ -582,7 +642,7 @@ function bindCell(id, c) {
     if (st.jiggle || st.dragging) return;
     clearTimeout(timers.close);
     clearTimeout(timers.open);
-    if (st.card.vis && st.card.open) openCard(id);
+    if (st.card.vis && st.card.open) { if (st.card.id !== id) timers.open = setTimeout(() => openCard(id), CARD_SWITCH); }
     else timers.open = setTimeout(() => openCard(id), st.cfg.notch.hover_delay_ms);
   });
   c.el.addEventListener('pointerleave', () => clearTimeout(timers.open));
