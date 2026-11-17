@@ -437,3 +437,120 @@ impl Core {
         Snapshot { providers: views, suggestion }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Language;
+    use crate::providers::{FetchError, Limit, HOUR};
+    use crate::scheduler::apply;
+
+    const T0: i64 = 1_794_800_000;
+    const MIN: i64 = 60;
+
+    fn core() -> Core {
+        Core {
+            dir: std::env::temp_dir(),
+            config: RwLock::new(Config::default()),
+            i18n: RwLock::new(I18n::new(Language::En, "en-US")),
+            providers: Mutex::new(HashMap::new()),
+            net: Net::new(),
+            scheduler: Mutex::new(None),
+            pick: Mutex::new(None),
+        }
+    }
+
+    /// A reading of a 5-hour main limit that resets `reset_in` after `t`.
+    fn reading(id: &str, pct: f64, reset: i64) -> Result<Usage, FetchError> {
+        Ok(Usage { plan: None, limits: vec![Limit::new(id, "limit.5h", pct, Some(reset), Some(5 * HOUR))] })
+    }
+
+    #[test]
+    fn suggestion_appears_with_the_forecast() {
+        let core = core();
+        let reset = T0 + 3 * HOUR;
+        // Claude climbs 1 point a minute from 72 % to 92 %: out 8 minutes after the last reading.
+        for (m, pct) in [(0, 72.0), (10, 82.0), (20, 92.0)] {
+            apply(&core, ProviderId::Claude, reading("session", pct, reset), T0 + m * MIN);
+        }
+        apply(&core, ProviderId::Codex, reading("primary", 12.0, reset), T0 + 20 * MIN);
+
+        let snap = core.snapshot(T0 + 20 * MIN);
+        let claude = snap.providers.iter().find(|v| v.id == "claude").unwrap();
+        assert_eq!(claude.ring, "ok");
+        assert_eq!(claude.pct, 92.0);
+        let fc = claude.forecast.as_ref().unwrap();
+        assert_eq!(fc.kind, "danger");
+        assert!(fc.text.starts_with("At this pace: out at "), "{}", fc.text);
+        assert!(fc.text.contains("before reset"), "{}", fc.text);
+
+        let s = snap.suggestion.expect("a switch is suggested");
+        assert_eq!((s.from, s.to), ("claude", "codex"));
+        let at = claude.out_at.clone().unwrap();
+        assert_eq!(s.line, format!("Claude 92% (out at {at}) → use Codex (12%)"));
+        assert_eq!(s.b, "use Codex (12%)");
+    }
+
+    #[test]
+    fn learning_until_two_readings_ten_minutes_apart() {
+        let core = core();
+        apply(&core, ProviderId::Claude, reading("session", 40.0, T0 + HOUR), T0);
+        let snap = core.snapshot(T0);
+        assert_eq!(snap.providers[0].forecast.as_ref().unwrap().text, "Learning your pace…");
+    }
+
+    #[test]
+    fn failures_keep_the_last_reading_as_stale() {
+        let core = core();
+        apply(&core, ProviderId::Claude, reading("session", 40.0, T0 + HOUR), T0);
+        apply(&core, ProviderId::Claude, Err(FetchError::Failed("HTTP 500".into())), T0 + 10 * MIN);
+        let snap = core.snapshot(T0 + 10 * MIN);
+        let v = &snap.providers[0];
+        assert_eq!((v.ring, v.card, v.pct), ("stale", "stale", 40.0), "the old number, marked stale");
+        assert_eq!(v.footer, "Last updated 10 min ago · via Claude Code");
+        assert_eq!(v.forecast.as_ref().unwrap().kind, "stale");
+    }
+
+    #[test]
+    fn no_reading_means_no_number() {
+        let core = core();
+        apply(&core, ProviderId::Codex, Err(FetchError::Failed("timed out".into())), T0);
+        let snap = core.snapshot(T0);
+        let v = &snap.providers[0];
+        assert_eq!((v.ring, v.card, v.pct), ("na", "error", 0.0));
+        assert!(v.rows.is_empty() && v.forecast.is_none());
+    }
+
+    #[test]
+    fn not_installed_providers_are_left_out() {
+        let core = core();
+        apply(&core, ProviderId::Kimi, Err(FetchError::NotInstalled), T0);
+        apply(&core, ProviderId::Codex, reading("primary", 5.0, T0 + HOUR), T0);
+        let ids: Vec<&str> = core.snapshot(T0).providers.iter().map(|v| v.id).collect();
+        assert_eq!(ids, ["codex"]);
+    }
+
+    #[test]
+    fn stale_or_excluded_tools_are_not_suggested() {
+        let core = core();
+        let reset = T0 + 3 * HOUR;
+        apply(&core, ProviderId::Claude, reading("session", 95.0, reset), T0);
+        apply(&core, ProviderId::Codex, reading("primary", 10.0, reset), T0);
+        assert!(core.snapshot(T0).suggestion.is_some());
+
+        core.config.write().unwrap().providers.codex.suggest = false;
+        assert!(core.snapshot(T0).suggestion.is_none(), "excluded from suggestions");
+
+        core.config.write().unwrap().providers.codex.suggest = true;
+        apply(&core, ProviderId::Codex, Err(FetchError::Failed("HTTP 500".into())), T0 + MIN);
+        assert!(core.snapshot(T0 + MIN).suggestion.is_none(), "stale data is never suggested");
+    }
+
+    #[test]
+    fn forecast_can_be_hidden() {
+        let core = core();
+        core.config.write().unwrap().forecast.show = false;
+        apply(&core, ProviderId::Claude, reading("session", 40.0, T0 + HOUR), T0);
+        assert!(core.snapshot(T0).providers[0].forecast.is_none());
+    }
+}
