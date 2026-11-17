@@ -26,6 +26,7 @@ mod forecast;
 mod i18n;
 mod menu;
 mod net;
+mod netlog;
 mod notch;
 mod providers;
 mod scheduler;
@@ -35,6 +36,7 @@ mod shortcut;
 mod spring;
 mod state;
 mod suggest;
+mod tray;
 mod win;
 
 use std::collections::HashMap;
@@ -86,6 +88,7 @@ fn main() {
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .manage(core.clone())
         .manage(notch::Notch(Mutex::new(None)))
+        .manage(tray::Tray::default())
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap,
             commands::get_snapshot,
@@ -105,6 +108,7 @@ fn main() {
             commands::open_config_file,
             commands::pick_agy_path,
             commands::notch_preview,
+            commands::open_network_log,
             commands::quit,
         ])
         .setup(move |app| {

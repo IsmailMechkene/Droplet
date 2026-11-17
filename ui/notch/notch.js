@@ -748,6 +748,15 @@ async function start() {
   listen('strings-changed', (s) => { st.strings = s.strings; document.documentElement.lang = s.lang; });
   listen('notch-dock', (place) => { const same = place.edge === st.place.edge; adoptPlacement(place); if (same) { lastShape = ''; update(); } });
   listen('notch-drop', endDrag);
+  // Opened from the keyboard shortcut or the tray, the notch has focus; clicking
+  // elsewhere closes the card and hands focus back to the no-activate mode.
+  window.addEventListener('blur', () => {
+    if (!st.card.open && !st.tabOpen) return;
+    closeCard();
+    st.tabOpen = false;
+    update();
+    invoke('notch_blur').catch(() => {});
+  });
   listen('notch-peek', peek);
   listen('notch-command', (cmd) => {
     if (cmd === 'rearrange') setJiggle(!st.jiggle);

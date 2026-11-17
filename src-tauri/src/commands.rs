@@ -192,3 +192,9 @@ pub fn notch_preview(app: AppHandle) {
 pub fn notch_drag_start(app: AppHandle) {
     notch::drag::start(&app);
 }
+
+/// Writes network-log.txt (with the audit list) and opens it in the default editor.
+#[tauri::command]
+pub fn open_network_log(core: State<Arc<Core>>) -> bool {
+    crate::netlog::open(&core.dir, &core.config(), &core.net.log_snapshot())
+}

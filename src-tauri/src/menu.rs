@@ -43,6 +43,9 @@ pub fn handle(app: &AppHandle, id: &str) {
             let _ = settings::change(app, "notch.locked", (!locked).into());
         }
         "settings" => settings_window::open(app, None),
+        "netlog" => {
+            let _ = crate::netlog::open(&core.dir, &core.config(), &core.net.log_snapshot());
+        }
         "quit" => app.exit(0),
         _ => {}
     }

@@ -53,6 +53,8 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, wparam: WPARAM, 
         APPBAR_MESSAGE if wparam.0 == ABN_FULLSCREENAPP => evaluate(),
         WM_DISPLAYCHANGE => displays_changed(),
         WM_SETTINGCHANGE if wparam.0 == SPI_SETWORKAREA => displays_changed(),
+        // Theme ("ImmersiveColorSet") or other system changes: the tray icons may need new ink.
+        WM_SETTINGCHANGE => redraw_tray(),
         WM_DESTROY => {
             let mut bar = APPBARDATA { cbSize: std::mem::size_of::<APPBARDATA>() as u32, hWnd: hwnd, ..Default::default() };
             SHAppBarMessage(ABM_REMOVE, &mut bar);
@@ -117,6 +119,14 @@ fn displays_changed() {
     let config = app.state::<Arc<Core>>().config();
     notch::redock(app, &config);
     let _ = app.emit("monitors-changed", ());
+    redraw_tray();
+}
+
+/// Taskbar theme or DPI changed: redraw the tray icons on the worker thread.
+fn redraw_tray() {
+    let Some(app) = APP.get() else { return };
+    crate::tray::invalidate(app);
+    app.state::<Arc<Core>>().send(crate::scheduler::Msg::ConfigChanged);
 }
 
 /// Called when settings change, so turning "hide for full-screen apps" off shows the notch again.

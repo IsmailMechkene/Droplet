@@ -151,6 +151,8 @@ pub struct ProviderView {
     pub label: String,
     /// When the main limit is forecast to run out, as local "HH:MM".
     pub out_at: Option<String>,
+    /// When the main limit resets (Unix seconds), for the tray tooltip.
+    pub main_resets_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -250,6 +252,7 @@ fn provider_view(id: ProviderId, state: &ProviderState, config: &Config, i18n: &
         footer: age_text(i18n, "card.checked", "card.checked_now", state.checked_at, now, tool),
         label: i18n.f("a11y.ring_error", &[("name", name)]),
         out_at: None,
+        main_resets_at: None,
     };
     let message = |title_key: &str, body_key: &str, error: &str| {
         Some(MessageView {
@@ -322,6 +325,7 @@ fn provider_view(id: ProviderId, state: &ProviderState, config: &Config, i18n: &
     if let Some(main) = main_limit(usage, &cfg.main_limit) {
         view.pct = main.used_pct;
         view.pace = forecast::even_pace(main.resets_at, main.window_secs, now);
+        view.main_resets_at = main.resets_at;
         view.period = state.series.get(&main.id).map_or(0, |s| s.period);
         // Show the main limit first in the card.
         if let Some(i) = view.rows.iter().position(|r| r.id == main.id) {

@@ -156,4 +156,5 @@ pub fn publish(app: &AppHandle) {
     let core = app.state::<Arc<Core>>();
     let snapshot = core.snapshot(clock::now());
     let _ = app.emit("usage", &snapshot);
+    crate::tray::update(app, &snapshot);
 }
