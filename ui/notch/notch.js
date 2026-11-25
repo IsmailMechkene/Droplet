@@ -50,6 +50,7 @@ const st = {
   place: { edge: 'right', before: 400, after: 400, depth: 800 },
   order: [],                 // provider ids in display order (live while reordering)
   tabOpen: false, keepOpen: false, idle: false, jiggle: false, dragging: false, peeking: false,
+  hover: false, focusIn: false, // pointer over the notch; keyboard focus inside it (they reveal the gear and grip)
   card: { id: null, open: false, vis: false, in: false },
   pill: null,                // { id, a, b, dot, kind: 'chip' | 'peek' }
   dismissedChip: null, ringDrag: null,
@@ -60,6 +61,7 @@ const timers = {};
 const sp = {
   depth: spring.make(COLLAPSED.depth), len: spring.make(COLLAPSED.len),
   lift: spring.make(1, 0.0005), squash: spring.make(0, 0.0005), shake: spring.make(0), pill: spring.make(0, 0.002),
+  tail: spring.make(0, 0.002), // gear and grip: 0 hidden, 1 shown
   cd: spring.make(0), cs: spring.make(0), cw: spring.make(0), ch: spring.make(0), cr: spring.make(0),
 };
 const cells = new Map(); // id -> { el, ring, x, y, s, phase, freq, placed }
@@ -144,8 +146,9 @@ function visibleBox(animating) {
   const L = layout(), col = collapsedNow();
   const depth = Math.max(col ? COLLAPSED.depth : L.depth, sp.depth.x);
   const len = Math.max(col ? COLLAPSED.len : L.len, sp.len.x);
-  const expanded = !col || sp.depth.x > 14;
-  let dMax = depth + SHADOW, sMin = -len / 2 - 12 - SHADOW, sMax = len / 2 + (expanded ? TAIL : 12) + SHADOW;
+  // The gear and grip only take room while shown, so a hidden gear does not catch clicks.
+  const tailRoom = (!col || sp.depth.x > 14) && (sp.tail.t > 0 || sp.tail.x > 0.01);
+  let dMax = depth + SHADOW, sMin = -len / 2 - 12 - SHADOW, sMax = len / 2 + (tailRoom ? TAIL : 12) + SHADOW;
   if (st.pill && (sp.pill.t > 0 || sp.pill.x > 0.01)) {
     const p = pillSize(), centre = ringCentre(L, Math.max(0, L.ids.indexOf(st.pill.id))).s;
     const c = pillCentre(centre, p.half, -L.len / 2);
@@ -312,6 +315,8 @@ function retarget() {
   sp.len.t = col ? COLLAPSED.len : L.len;
   sp.pill.c = springFor('bouncy');
   sp.pill.t = st.pill && !st.dragging && !col ? 1 : 0;
+  sp.tail.c = springFor('snappy');
+  sp.tail.t = !col && (st.hover || st.focusIn || st.card.open || st.dragging || st.jiggle) ? 1 : 0;
   const snappy = springFor('snappy');
   for (const [id, c] of cells) {
     const i = L.ids.indexOf(id);
@@ -399,13 +404,14 @@ function render() {
     });
   }
 
-  // Gear and grip follow the end of the body.
+  // Gear and grip follow the end of the body, and only show while the notch is in use.
   const gx = R.x + (vert ? R.w / 2 : R.w + 8 + GEAR / 2), gy = R.y + (vert ? R.h + 8 + GEAR / 2 : R.h / 2);
   const gripX = vert ? gx - GRIP / 2 : gx + GEAR / 2 + 4, gripY = vert ? gy + GEAR / 2 + 4 : gy - GRIP / 2;
+  const tail = clamp(sp.tail.x, 0, 1), shown = content * tail, grow = reduced ? 1 : 0.6 + 0.4 * Math.max(0, sp.tail.x);
   for (const [node, x, y] of [[el.gear, gx - GEAR / 2, gy - GEAR / 2], [el.grip, gripX, gripY]]) {
-    node.style.transform = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px)`;
-    node.style.opacity = content;
-    node.style.pointerEvents = content > 0.5 ? 'auto' : 'none';
+    node.style.transform = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px) scale(${grow.toFixed(3)})`;
+    node.style.opacity = shown.toFixed(3);
+    node.style.pointerEvents = shown > 0.5 ? 'auto' : 'none';
   }
 
   renderPill(L, d1, s0, s1, r, collapsed);
@@ -641,6 +647,7 @@ function touch() {
 function enterNotch() {
   clearTimeout(timers.close);
   clearTimeout(timers.tab);
+  if (!st.hover) { st.hover = true; update(); }
   if (collapsedNow()) timers.tab = setTimeout(() => { st.tabOpen = true; update(); }, Math.min(150, st.cfg.notch.hover_delay_ms));
 }
 function leaveNotch() {
@@ -649,6 +656,7 @@ function leaveNotch() {
   clearTimeout(timers.close);
   timers.close = setTimeout(() => {
     closeCard();
+    st.hover = false;
     if (!st.dragging && !st.jiggle) st.tabOpen = false;
     touch();
     update();
@@ -766,6 +774,9 @@ function endDrag() {
 function bind() {
   el.layer.addEventListener('pointerenter', enterNotch);
   el.layer.addEventListener('pointerleave', leaveNotch);
+  // Tabbing in reveals the gear and grip too (they stay focusable while hidden).
+  el.layer.addEventListener('focusin', () => { if (!st.focusIn) { st.focusIn = true; update(); } });
+  el.layer.addEventListener('focusout', (e) => { if (!el.layer.contains(e.relatedTarget)) { st.focusIn = false; update(); } });
   el.card.addEventListener('pointerenter', () => clearTimeout(timers.close));
   el.card.addEventListener('pointerleave', leaveNotch);
 
