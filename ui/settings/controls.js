@@ -72,9 +72,20 @@ export function seg(ctx, path, values, opts = {}) {
   const box = h('div', 'seg'), thumb = h('div', 'seg-thumb');
   box.setAttribute('role', 'radiogroup');
   box.setAttribute('aria-label', meta.label);
-  box.style.gridTemplateColumns = `repeat(${values.length}, minmax(0, 1fr))`;
-  thumb.style.width = `calc((100% - 4px) / ${values.length})`;
+  box.style.gridTemplateColumns = `repeat(${values.length}, minmax(min-content, 1fr))`;
   box.append(thumb);
+  // The thumb follows the selected button's measured box, so columns may differ in width.
+  let selected = 0;
+  const placeThumb = () => {
+    const b = buttons[selected];
+    if (!b || !b.offsetWidth) return;
+    const first = !thumb.style.width; // no slide-in when the control first appears
+    if (first) thumb.style.transition = 'none';
+    thumb.style.width = b.offsetWidth + 'px';
+    thumb.style.transform = `translateX(${b.offsetLeft}px)`;
+    if (first) { void thumb.offsetWidth; thumb.style.transition = ''; }
+  };
+  new ResizeObserver(placeThumb).observe(box);
   const buttons = values.map((value) => {
     const b = h('button', '', ctx.t(`s.${path}.opt.${value}`));
     b.type = 'button';
@@ -89,7 +100,8 @@ export function seg(ctx, path, values, opts = {}) {
     ...r,
     update(cfg) {
       const i = Math.max(0, values.indexOf(ctx.get(cfg, path)));
-      thumb.style.transform = `translateX(${i * 100}%)`;
+      selected = i;
+      placeThumb();
       buttons.forEach((b, j) => b.setAttribute('aria-checked', String(j === i)));
       r.syncDep(cfg);
     },

@@ -150,12 +150,19 @@ function privacyExtras(page) {
   page.append(promises);
 }
 
+/** Centres the accent bar on the current nav item (items grow when a translation wraps). */
+function placeNavMark() {
+  const item = $('nav').querySelector(`.nav-item[data-id="${st.section}"]`);
+  if (!item) return;
+  const mark = $('nav-mark');
+  mark.style.transform = `translateY(${item.offsetTop + (item.offsetHeight - mark.offsetHeight) / 2 - mark.offsetTop}px)`;
+}
+
 /** Rebuilds the page for the current section or search. */
 function draw(animate) {
   const page = $('page'), q = st.query.trim().toLowerCase();
   page.replaceChildren();
   st.live = [];
-  const index = SECTIONS.findIndex((s) => s.id === st.section);
 
   $('title').textContent = q ? t('win.search_results') : t(`sec.${st.section}`);
   for (const b of $('nav').querySelectorAll('.nav-item')) {
@@ -163,7 +170,7 @@ function draw(animate) {
     b.classList.toggle('current', current);
     b.setAttribute('aria-current', current ? 'page' : 'false');
   }
-  $('nav-mark').style.transform = `translateY(${index * 38}px)`;
+  placeNavMark();
   $('nav-mark').style.opacity = q ? 0 : 1;
   $('preview').hidden = !!q || (st.section !== 'appearance' && st.section !== 'notch');
 
