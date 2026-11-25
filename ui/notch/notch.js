@@ -35,6 +35,7 @@ const TAIL = 8 + GEAR + 4 + GRIP; // gear + grip after the body
 const CARD_W = 260, CARD_GAP = 12;
 const CARD_H_GUESS = 360; // card height assumed for the envelope before one has been measured
 const CARD_SWITCH = 90;   // ms on another ring before an open card moves to it
+const BODY_R = 16, FILLET = 8; // body corner radius; pill fillet size
 const K = 0.5523;       // circle approximation with cubic Béziers
 
 const $ = (id) => document.getElementById(id);
@@ -127,6 +128,12 @@ function cardBoxAt(L, i, h) {
   return { d0, d1: d0 + across, s0, s1: s0 + along, ring: c, ringD: L.z.d };
 }
 
+/** Pill centre along the edge: level with its ring. A horizontal pill is long, so it
+ *  moves along until its start clears the body's rounded corner with room for a fillet. */
+function pillCentre(centre, half, s0) {
+  return isVert() ? centre : Math.max(centre, s0 + BODY_R + FILLET + half);
+}
+
 function pillSize() {
   const text = el.pilltext.scrollWidth || 160;
   return isVert() ? { depth: text, half: 15 } : { depth: 30, half: text / 2 };
@@ -141,7 +148,7 @@ function visibleBox(animating) {
   let dMax = depth + SHADOW, sMin = -len / 2 - 12 - SHADOW, sMax = len / 2 + (expanded ? TAIL : 12) + SHADOW;
   if (st.pill && (sp.pill.t > 0 || sp.pill.x > 0.01)) {
     const p = pillSize(), centre = ringCentre(L, Math.max(0, L.ids.indexOf(st.pill.id))).s;
-    const c = isVert() ? centre : Math.max(centre, -L.len / 2 + p.half + 4);
+    const c = pillCentre(centre, p.half, -L.len / 2);
     dMax = Math.max(dMax, depth + p.depth + SHADOW);
     sMin = Math.min(sMin, c - p.half - 8 - SHADOW);
     sMax = Math.max(sMax, c + p.half + 8 + SHADOW);
@@ -167,7 +174,7 @@ function envelope() {
   if (st.card.vis) cardH = Math.max(cardH, el.card.offsetHeight || 0);
   const p = isVert() ? { depth: Math.max(pillW, 160), half: 15 } : { depth: 30, half: Math.max(pillW, 160) / 2 };
   L.ids.forEach((_, i) => {
-    const centre = ringCentre(L, i).s, c = isVert() ? centre : Math.max(centre, -L.len / 2 + p.half + 4);
+    const c = pillCentre(ringCentre(L, i).s, p.half, -L.len / 2);
     dMax = Math.max(dMax, L.depth + p.depth + SHADOW);
     sMin = Math.min(sMin, c - p.half - 8 - SHADOW);
     sMax = Math.max(sMax, c + p.half + 8 + SHADOW);
@@ -401,33 +408,48 @@ function render() {
     node.style.pointerEvents = content > 0.5 ? 'auto' : 'none';
   }
 
-  renderPill(L, d1, s0, collapsed);
+  renderPill(L, d1, s0, s1, r, collapsed);
   renderCardFrame();
 }
 
 /** The peek / suggestion pill: grows out of the body next to a ring, with concave fillets. */
-function renderPill(L, d1, s0, collapsed) {
+// Pill corners as [side, end] for [top-left, top-right, bottom-right, bottom-left]:
+// side 'i' touches the body, 'o' faces away; end 's' is the start along the edge, 'e' the end.
+const PILL_CORNERS = {
+  right: [['o', 's'], ['i', 's'], ['i', 'e'], ['o', 'e']],
+  left: [['i', 's'], ['o', 's'], ['o', 'e'], ['i', 'e']],
+  top: [['i', 's'], ['i', 'e'], ['o', 'e'], ['o', 's']],
+  bottom: [['o', 's'], ['o', 'e'], ['i', 'e'], ['i', 's']],
+};
+
+function renderPill(L, d1, s0, s1, r, collapsed) {
   const amount = Math.max(0, sp.pill.x), pl = st.pill;
   if (amount <= 0.01 || !pl || collapsed) {
     el.pill.style.display = el.f1.style.display = el.f2.style.display = 'none';
     el.pilltext.style.opacity = 0;
     return;
   }
-  const vert = isVert(), size = pillSize(), i = Math.max(0, L.ids.indexOf(pl.id));
-  const centre = ringCentre(L, i).s, half = size.half;
-  const c = vert ? centre : Math.max(centre, s0 + half + 4);
+  const size = pillSize(), i = Math.max(0, L.ids.indexOf(pl.id)), half = size.half;
+  const c = pillCentre(ringCentre(L, i).s, half, s0);
   const grown = size.depth * amount;
   put(el.pill, rectOf(d1 - 2, d1 - 2 + grown, c - half, c + half));
-  // Round only the outer end: the end joined to the body is square, so no
-  // background shows through at the seam (the fillets give it the flare).
-  const rad = Math.min(15, grown / 2 + 2) + 'px', e = edge();
-  const [tl, tr, br, bl] = e === 'right' ? [rad, 0, 0, rad] : e === 'left' ? [0, rad, rad, 0] : e === 'top' ? [0, 0, rad, rad] : [rad, rad, 0, 0];
-  el.pill.style.borderRadius = `${tl} ${tr} ${br} ${bl}`;
+
+  // Each end of the pill's inner side either joins the body's straight part (square
+  // corner plus a concave fillet), sits a few pixels into its rounded corner (square:
+  // the 2 px overlap covers the seam), or hangs past the body (rounded, no fillet).
+  const grow = Math.min(1, amount * 1.6);
+  const ends = { s: c - half - (s0 + r), e: s1 - r - (c + half) }; // room left on the straight part
+  const rad = Math.min(15, grown / 2 + 2);
+  const radius = ([side, end]) => (side === 'o' || ends[end] < -7 ? rad : 0) + 'px';
+  el.pill.style.borderRadius = PILL_CORNERS[edge()].map(radius).join(' ');
   el.pill.style.display = 'flex';
   el.pilltext.style.opacity = amount > 0.7 ? 1 : 0;
-  const fs = 8 * Math.min(1, amount * 1.6);
-  for (const [node, sa, sb, corner] of [[el.f1, c - half - fs, c - half, c - half - fs], [el.f2, c + half, c + half + fs, c + half + fs]]) {
-    const q = rectOf(d1 - 1, d1 + fs, sa, sb), cp = toXY(d1 + fs, corner);
+
+  for (const [node, end, dir] of [[el.f1, 's', -1], [el.f2, 'e', 1]]) {
+    const fs = Math.min(FILLET, ends[end]) * grow;
+    if (fs < 0.5) { node.style.display = 'none'; continue; }
+    const at = c + dir * half, far = at + dir * fs;
+    const q = rectOf(d1 - 1, d1 + fs, Math.min(at, far), Math.max(at, far)), cp = toXY(d1 + fs, far);
     const gx = Math.abs(cp[0] - q.x) < 0.5 ? '0' : '100%', gy = Math.abs(cp[1] - q.y) < 0.5 ? '0' : '100%';
     put(node, q);
     node.style.background = `radial-gradient(circle at ${gx} ${gy}, transparent ${Math.max(0, fs - 0.6)}px, var(--dp-bg) ${fs}px)`;
@@ -815,6 +837,8 @@ async function start() {
   // Opened from the keyboard shortcut or the tray, the notch has focus; clicking
   // elsewhere closes the card and hands focus back to the no-activate mode.
   window.addEventListener('blur', () => {
+    // Drop focus too: WebView2 restores it (with a focus ring, and the card) when the window is next focused.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     if (!st.card.open && !st.tabOpen) return;
     closeCard();
     st.tabOpen = false;

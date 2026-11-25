@@ -13,7 +13,8 @@ html, body { background: transparent; }
 #hit { pointer-events: auto; }
 
 #cells > .cell { position: absolute; left: 0; top: 0; display: flex; justify-content: center; align-items: flex-start; pointer-events: auto; cursor: pointer; outline: none; border-radius: 10px; }
-#cells > .cell:focus-visible { box-shadow: 0 0 0 2px var(--dp-focus); }
+/* Focus: a ring round the disc. A box round the cell would be cut off by the screen edge. */
+#cells > .cell:focus-visible .ring-disc { box-shadow: 0 0 0 2px var(--dp-bg), 0 0 0 3.5px var(--dp-focus); }
 .cell > .press { transition: transform var(--spring-snappy); }
 .cell:hover > .press { transform: scale(1.08); }
 .cell:active > .press { transform: scale(0.94); }
